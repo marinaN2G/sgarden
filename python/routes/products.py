@@ -2,6 +2,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.responses import JSONResponse
 from models.product import ProductRequest, ProductResponse
 from database import products_collection
 from security.jwt_handler import get_current_user
@@ -9,6 +10,28 @@ from bson import ObjectId
 from datetime import datetime
 
 router = APIRouter(prefix="/api/products", tags=["products"])
+
+VALID_CATEGORIES = {"Electronics", "Accessories", "Storage", "Networking"}
+
+
+def validate_product_request(request: ProductRequest, is_create: bool) -> dict:
+    errors: dict = {}
+
+    if is_create:
+        if request.name is None or not request.name.strip():
+            errors["name"] = "name is required and must be a non-empty string"
+    elif request.name is not None and not request.name.strip():
+        errors["name"] = "name must be a non-empty string"
+
+    if request.price is not None and request.price <= 0:
+        errors["price"] = "price must be a positive number"
+
+    if request.category is not None and request.category not in VALID_CATEGORIES:
+        errors["category"] = (
+            "category must be one of: Electronics, Accessories, Storage, Networking"
+        )
+
+    return errors
 
 # CODE QUALITY ISSUE: unused variable
 service_name = "ProductService"
@@ -158,6 +181,13 @@ async def get_product_by_id(product_id: str):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_product(request: ProductRequest, current_user: dict = Depends(get_current_user)):
+    errors = validate_product_request(request, is_create=True)
+    if errors:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"message": "Validation failed", "errors": errors},
+        )
+
     product_doc = {
         "name": request.name,
         "description": request.description,
@@ -210,6 +240,13 @@ async def update_product_legacy(product_id: str, request: ProductRequest, curren
 
 @router.put("/{product_id}")
 async def update_product(product_id: str, request: ProductRequest, current_user: dict = Depends(get_current_user)):
+    errors = validate_product_request(request, is_create=False)
+    if errors:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"message": "Validation failed", "errors": errors},
+        )
+
     if not ObjectId.is_valid(product_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
