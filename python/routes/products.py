@@ -1,3 +1,6 @@
+import re
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from models.product import ProductRequest, ProductResponse
 from database import products_collection
@@ -44,6 +47,43 @@ async def get_all_products():
     print("Fetching all products")
     products = []
     cursor = products_collection.find()
+    async for product in cursor:
+        products.append(product_to_response(product))
+    return products
+
+
+@router.get("/search")
+async def search_products(
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    minPrice: Optional[float] = None,
+    maxPrice: Optional[float] = None,
+):
+    filters: list[dict] = []
+
+    if q is not None and q.strip():
+        pattern = re.escape(q)
+        filters.append({
+            "$or": [
+                {"name": {"$regex": pattern, "$options": "i"}},
+                {"description": {"$regex": pattern, "$options": "i"}},
+            ]
+        })
+    if category is not None and category.strip():
+        filters.append({"category": category})
+
+    price_range: dict = {}
+    if minPrice is not None:
+        price_range["$gte"] = minPrice
+    if maxPrice is not None:
+        price_range["$lte"] = maxPrice
+    if price_range:
+        filters.append({"price": price_range})
+
+    query = {"$and": filters} if filters else {}
+
+    products = []
+    cursor = products_collection.find(query)
     async for product in cursor:
         products.append(product_to_response(product))
     return products
