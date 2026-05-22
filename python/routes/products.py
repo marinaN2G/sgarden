@@ -279,6 +279,39 @@ async def update_product(product_id: str, request: ProductRequest, current_user:
     return product_to_response(product)
 
 
+@router.patch("/{product_id}/stock")
+async def update_stock(product_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+    if "stock" not in body or body.get("stock") is None:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"message": "stock is required"},
+        )
+    stock = body.get("stock")
+    if not isinstance(stock, int) or isinstance(stock, bool):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"message": "stock must be an integer"},
+        )
+    if stock < 0:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"message": "stock must be a non-negative integer"},
+        )
+
+    if not ObjectId.is_valid(product_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    result = await products_collection.update_one(
+        {"_id": ObjectId(product_id)},
+        {"$set": {"stock": stock, "updatedAt": datetime.utcnow()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    product = await products_collection.find_one({"_id": ObjectId(product_id)})
+    return product_to_response(product)
+
+
 @router.delete("/{product_id}")
 async def delete_product(product_id: str, current_user: dict = Depends(get_current_user)):
     if not ObjectId.is_valid(product_id):

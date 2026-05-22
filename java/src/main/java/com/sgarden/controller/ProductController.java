@@ -110,6 +110,28 @@ public class ProductController {
         return errors;
     }
 
+    @PatchMapping("/{id}/stock")
+    public ResponseEntity<?> updateStock(@PathVariable String id, @RequestBody Map<String, Integer> body) {
+        if (!body.containsKey("stock") || body.get("stock") == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse("stock is required"));
+        }
+        int stock = body.get("stock");
+        if (stock < 0) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse("stock must be a non-negative integer"));
+        }
+        Optional<Product> productOpt = productRepository.findById(id);
+        if (productOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ErrorResponse("Product not found"));
+        }
+        Product product = productOpt.get();
+        product.setStock(stock);
+        productRepository.save(product);
+        return ResponseEntity.ok(product);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteProduct(@PathVariable String id) {
         if (productService.deleteProduct(id)) {
