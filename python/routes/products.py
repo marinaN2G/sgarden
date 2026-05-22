@@ -1,3 +1,6 @@
+import re
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from models.product import ProductRequest, ProductResponse
 from database import products_collection
@@ -44,6 +47,77 @@ async def get_all_products():
     print("Fetching all products")
     products = []
     cursor = products_collection.find()
+    async for product in cursor:
+        products.append(product_to_response(product))
+    return products
+
+
+@router.get("/stats")
+async def get_product_stats():
+    total_count = 0
+    prices: list[float] = []
+    category_count: dict[str, int] = {}
+
+    cursor = products_collection.find()
+    async for product in cursor:
+        total_count += 1
+        price = product.get("price")
+        if price is not None:
+            prices.append(price)
+        category = product.get("category")
+        if category is not None:
+            category_count[category] = category_count.get(category, 0) + 1
+
+    if prices:
+        average_price = sum(prices) / len(prices)
+        min_price = min(prices)
+        max_price = max(prices)
+    else:
+        average_price = 0.0
+        min_price = None
+        max_price = None
+
+    return {
+        "totalCount": total_count,
+        "averagePrice": average_price,
+        "minPrice": min_price,
+        "maxPrice": max_price,
+        "categoryCount": category_count,
+    }
+
+
+@router.get("/search")
+async def search_products(
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    minPrice: Optional[float] = None,
+    maxPrice: Optional[float] = None,
+):
+    filters: list[dict] = []
+
+    if q is not None and q.strip():
+        pattern = re.escape(q)
+        filters.append({
+            "$or": [
+                {"name": {"$regex": pattern, "$options": "i"}},
+                {"description": {"$regex": pattern, "$options": "i"}},
+            ]
+        })
+    if category is not None and category.strip():
+        filters.append({"category": category})
+
+    price_range: dict = {}
+    if minPrice is not None:
+        price_range["$gte"] = minPrice
+    if maxPrice is not None:
+        price_range["$lte"] = maxPrice
+    if price_range:
+        filters.append({"price": price_range})
+
+    query = {"$and": filters} if filters else {}
+
+    products = []
+    cursor = products_collection.find(query)
     async for product in cursor:
         products.append(product_to_response(product))
     return products
