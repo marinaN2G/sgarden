@@ -1,9 +1,13 @@
 package com.sgarden.service;
 
+import com.sgarden.dto.PageResponse;
 import com.sgarden.dto.ProductRequest;
 import com.sgarden.dto.ProductStatsResponse;
 import com.sgarden.model.Product;
 import com.sgarden.repository.ProductRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -33,6 +37,23 @@ public class ProductService {
     public List<Product> getAllProducts() {
         System.out.println("Fetching all products");
         return productRepository.findAll();
+    }
+
+    public PageResponse<Product> getAllProducts(int page, int limit, String sort, String order) {
+        int safePage = Math.max(1, page);
+        int safeLimit = Math.max(1, limit);
+
+        Sort sortSpec = Sort.unsorted();
+        if (sort != null && !sort.isBlank()) {
+            Sort.Direction direction = "desc".equalsIgnoreCase(order)
+                    ? Sort.Direction.DESC
+                    : Sort.Direction.ASC;
+            sortSpec = Sort.by(direction, sort);
+        }
+
+        PageRequest pageRequest = PageRequest.of(safePage - 1, safeLimit, sortSpec);
+        Page<Product> productPage = productRepository.findAll(pageRequest);
+        return new PageResponse<>(productPage.getContent(), safePage, safeLimit, productPage.getTotalElements());
     }
 
     public Optional<Product> getProductById(String id) {
