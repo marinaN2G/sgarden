@@ -8,7 +8,9 @@ import com.sgarden.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -32,6 +34,36 @@ public class OrderService {
 
     public Order createOrder(OrderRequest request) {
         List<Order.OrderItem> items = mapItems(request);
+
+        Map<String, Integer> totalByProduct = new LinkedHashMap<>();
+        for (Order.OrderItem item : items) {
+            if (item.getProductId() == null || item.getQuantity() == null) {
+                continue;
+            }
+            totalByProduct.merge(item.getProductId(), item.getQuantity(), Integer::sum);
+        }
+
+        Map<String, Product> reservedProducts = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : totalByProduct.entrySet()) {
+            Optional<Product> productOpt = productRepository.findById(entry.getKey());
+            if (productOpt.isEmpty()) {
+                throw new InsufficientStockException("Product not found: " + entry.getKey());
+            }
+            Product product = productOpt.get();
+            int currentStock = product.getStock() != null ? product.getStock() : 0;
+            if (currentStock < entry.getValue()) {
+                throw new InsufficientStockException(
+                        "Insufficient stock for product: " + product.getName());
+            }
+            reservedProducts.put(entry.getKey(), product);
+        }
+
+        for (Map.Entry<String, Integer> entry : totalByProduct.entrySet()) {
+            Product product = reservedProducts.get(entry.getKey());
+            product.setStock(product.getStock() - entry.getValue());
+            productRepository.save(product);
+        }
+
         double total = calculateTotal(items);
         Order order = new Order();
         order.setItems(items);
