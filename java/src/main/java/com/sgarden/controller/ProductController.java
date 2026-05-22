@@ -12,13 +12,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
+
+    private static final Set<String> VALID_CATEGORIES =
+            Set.of("Electronics", "Accessories", "Storage", "Networking");
 
     private final ProductService productService;
     private final ProductRepository productRepository;
@@ -61,16 +66,48 @@ public class ProductController {
 
     @PostMapping
     public ResponseEntity<?> createProduct(@RequestBody ProductRequest request) {
+        Map<String, String> errors = validateProductRequest(request, true);
+        if (!errors.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse("Validation failed", errors));
+        }
         Product product = productService.createProduct(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(product);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<?> updateProduct(@PathVariable String id, @RequestBody ProductRequest request) {
+        Map<String, String> errors = validateProductRequest(request, false);
+        if (!errors.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse("Validation failed", errors));
+        }
         return productService.updateProduct(id, request)
                 .map(product -> ResponseEntity.ok((Object) product))
                 .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(new ErrorResponse("Product not found")));
+    }
+
+    private static Map<String, String> validateProductRequest(ProductRequest request, boolean isCreate) {
+        Map<String, String> errors = new LinkedHashMap<>();
+
+        if (isCreate) {
+            if (request.getName() == null || request.getName().isBlank()) {
+                errors.put("name", "name is required and must be a non-empty string");
+            }
+        } else if (request.getName() != null && request.getName().isBlank()) {
+            errors.put("name", "name must be a non-empty string");
+        }
+
+        if (request.getPrice() != null && request.getPrice() <= 0) {
+            errors.put("price", "price must be a positive number");
+        }
+
+        if (request.getCategory() != null && !VALID_CATEGORIES.contains(request.getCategory())) {
+            errors.put("category", "category must be one of: Electronics, Accessories, Storage, Networking");
+        }
+
+        return errors;
     }
 
     @DeleteMapping("/{id}")
